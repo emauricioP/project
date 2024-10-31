@@ -171,7 +171,7 @@ else:
                     
                     # Add delay between files to avoid throttling
                     if idx < len(uploaded_files) - 1:  # Don't delay after the last file
-                        time.sleep(2)  # 2-second delay between files
+                        time.sleep(10)  # 2-second delay between files
                 
                 progress_bar.progress(100)
                 st.session_state.processing_complete = True
