@@ -5,6 +5,8 @@ import pandas as pd
 from io import BytesIO
 from botocore.exceptions import ClientError
 import time
+import random
+import logging
 
 # Configure page settings first
 st.set_page_config(
@@ -18,6 +20,32 @@ if 'processed_data' not in st.session_state:
     st.session_state.processed_data = []
 if 'processing_complete' not in st.session_state:
     st.session_state.processing_complete = False
+
+def exponential_backoff(attempt, max_delay=32):
+    """Calculate exponential backoff delay"""
+    delay = min(max_delay, (2 ** attempt) + random.uniform(0, 1))
+    return delay
+
+def invoke_lambda_with_retry(lambda_client, payload, max_retries=5):
+    """Invoke Lambda function with exponential backoff retry"""
+    attempt = 0
+    while attempt <= max_retries:
+        try:
+            response = lambda_client.invoke(
+                FunctionName='genaipocpdf',
+                InvocationType='RequestResponse',
+                Payload=json.dumps(payload)
+            )
+            return response
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ThrottlingException':
+                if attempt == max_retries:
+                    raise e
+                delay = exponential_backoff(attempt)
+                time.sleep(delay)
+                attempt += 1
+            else:
+                raise e
 
 def get_aws_clients():
     """Create AWS clients with error handling"""
@@ -74,18 +102,14 @@ def process_single_file(s3_client, lambda_client, file, bucket_name, progress_ba
             "file_name": file.name
         }
         
-        response = lambda_client.invoke(
-            FunctionName='genaipocpdf',
-            InvocationType='RequestResponse',
-            Payload=json.dumps(payload)
-        )
+        # Use retry logic for Lambda invocation
+        response = invoke_lambda_with_retry(lambda_client, payload)
         
         response_payload = json.loads(response['Payload'].read().decode('utf-8'))
         
         if response['StatusCode'] == 200:
             body = json.loads(response_payload.get('body', '{}'))
             flattened_data = flatten_dict(body)
-            # Add filename to the data
             flattened_data['source_file'] = file.name
             progress_text.write(f"✅ Processed {file.name}")
             return flattened_data
@@ -137,14 +161,17 @@ else:
                 progress_bar = st.progress(0)
                 progress_text = st.empty()
                 
-                # Process each file
+                # Process each file with delay between files
                 for idx, file in enumerate(uploaded_files):
                     progress_text.write(f"Processing {file.name}...")
                     result = process_single_file(s3_client, lambda_client, file, S3_BUCKET_NAME, progress_bar, progress_text)
                     if result:
                         st.session_state.processed_data.append(result)
                     progress_bar.progress((idx + 1) / len(uploaded_files))
-                    time.sleep(0.5)  # Small delay to show progress
+                    
+                    # Add delay between files to avoid throttling
+                    if idx < len(uploaded_files) - 1:  # Don't delay after the last file
+                        time.sleep(2)  # 2-second delay between files
                 
                 progress_bar.progress(100)
                 st.session_state.processing_complete = True
