@@ -3,3 +3,5 @@ boto3
 pandas
 openpyxl
 xlsxwriter
+python-dotenv
+pycryptodome
