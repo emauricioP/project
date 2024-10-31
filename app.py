@@ -161,7 +161,7 @@ else:
                 progress_bar = st.progress(0)
                 progress_text = st.empty()
                 
-                # Process each file with delay between files
+                # Process each file with  between files
                 for idx, file in enumerate(uploaded_files):
                     progress_text.write(f"Processing {file.name}...")
                     result = process_single_file(s3_client, lambda_client, file, S3_BUCKET_NAME, progress_bar, progress_text)
@@ -171,7 +171,7 @@ else:
                     
                     # Add delay between files to avoid throttling
                     if idx < len(uploaded_files) - 1:  # Don't delay after the last file
-                        time.sleep(2)  # 2-second delay between files
+                        time.sleep(10)  # 2-second delay between files
                 
                 progress_bar.progress(100)
                 st.session_state.processing_complete = True
